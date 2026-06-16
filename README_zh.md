@@ -47,12 +47,12 @@
 ## 📦 安装与配置
 
 ### 1. 下载脚本
-在 GitHub 仓库中，下载 `setup_git_shield.ps1` 脚本到本地。
+在 GitHub 仓库中，下载 `setup.ps1` 脚本到本地。
 
 ### 2. 执行安装
-直接**双击**运行 `setup_git_shield.ps1`，或者在 PowerShell 中执行它：
+直接**双击**运行 `setup.ps1`，或者在 PowerShell 中执行它：
 ```powershell
-./setup_git_shield.ps1
+./setup.ps1
 ```
 
 ### 3. 配置拦截密码与危险命令

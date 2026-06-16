@@ -6,7 +6,7 @@
 # Format: @{ "main_cmd" = @{ "subs" = @("sub1", "sub2"); "warn" = "Custom Alert Message" } }
 $INTERCEPT_RULES = @{
     "git" = @{
-        "subs" = @("checkout", "restore");
+        "subs" = @("checkout", "restore","push");
         "warn" = "need user agree"
     }
 }

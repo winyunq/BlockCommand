@@ -47,12 +47,12 @@ Whenever an AI agent (or you yourself) runs a risky command (e.g., `git checkout
 ## 📦 Getting Started
 
 ### 1. Download the Script
-Download `setup_git_shield.ps1` from this repository.
+Download `setup.ps1` from this repository.
 
 ### 2. Run the Installer
-Double-click `setup_git_shield.ps1` or run it in your PowerShell terminal:
+Double-click `setup.ps1` or run it in your PowerShell terminal:
 ```powershell
-./setup_git_shield.ps1
+./setup.ps1
 ```
 
 ### 3. Setup Your Password & Rules
