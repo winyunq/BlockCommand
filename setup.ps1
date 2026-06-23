@@ -6,7 +6,7 @@
 # Format: @{ "main_cmd" = @{ "subs" = @("sub1", "sub2"); "warn" = "Custom Alert Message" } }
 $INTERCEPT_RULES = @{
     "git" = @{
-        "subs" = @("checkout", "restore","push");
+        "subs" = @("checkout", "restore", "reset");
         "warn" = "need user agree"
     }
 }
@@ -43,12 +43,13 @@ $Text = @{
         "PressKey"    = "按任意键退出..."
         "AskPwd"      = "Password: "
         "Fail"        = "deny"
+        "MissingParam" = "缺少用户同意(_PLACEHOLDER_PARAM_NAME_=[您的密码])"
     }
     "EN" = @{
         "Title"       = "             Command Interceptor Configurator"
         "Banner"      = "=========================================================="
         "Intercepts"  = "Current interception rules configured: "
-        "Prompt"      = "Enter the validation password (or type 'uninstall' to remove protection)"
+        "Prompt" = "Enter the validation password (or type 'uninstall' to remove protection)"
         "InputLabel"  = "Your Input"
         "Uninstalled" = "Interception policy uninstalled successfully!"
         "NoPolicy"    = "No protection policy found in your Profile."
@@ -61,6 +62,7 @@ $Text = @{
         "PressKey"    = "Press any key to exit..."
         "AskPwd"      = "Password: "
         "Fail"        = "deny"
+        "MissingParam" = "need Agree(by _PLACEHOLDER_PARAM_NAME_=[您的密码])"
     }
 }
 
@@ -87,7 +89,6 @@ $rulesMapString = "@{" + ($mapItems -join "; ") + "}"
 
 # EN: Prompt for input.
 # ZH: 交互式提示输入。
-Write-Host $L["Prompt"] -ForegroundColor Cyan
 $userInput = Read-Host $L["InputLabel"]
 
 if ($userInput -eq "uninstall") {
@@ -111,6 +112,53 @@ if ($userInput -eq "uninstall") {
     if ([string]::IsNullOrEmpty($userInput)) {
         Write-Host $L["EmptyPwd"] -ForegroundColor Red
     } else {
+        # Config options
+        $authMode = "1" # Default: 1 (Only Parameter)
+        $paramName = "UserAgree" # Default parameter name
+
+        # Display Advanced Config query
+        Write-Host ""
+        if ($DISPLAY_LANGUAGE -eq "ZH") {
+            Write-Host "是否执行高级安装？[Y/N] (默认: N): " -ForegroundColor Cyan -NoNewline
+        } else {
+            Write-Host "Perform advanced installation? [Y/N] (Default: N): " -ForegroundColor Cyan -NoNewline
+        }
+        $advanced = Read-Host
+        
+        if ($advanced -eq "Y" -or $advanced -eq "y") {
+            Write-Host ""
+            if ($DISPLAY_LANGUAGE -eq "ZH") {
+                Write-Host "选择 AI 认证模式：" -ForegroundColor Cyan
+                Write-Host "  1) 仅携带参数 (直接拒绝，要求带参数，推荐，默认)"
+                Write-Host "  2) 仅输入密钥 (不推荐)"
+                Write-Host "  3) 两者皆可"
+                Write-Host "请选择 [1-3] (默认: 1): " -ForegroundColor Cyan -NoNewline
+            } else {
+                Write-Host "Select AI authentication mode:" -ForegroundColor Cyan
+                Write-Host "  1) Only Parameter (Directly deny, require parameter, recommended, default)"
+                Write-Host "  2) Only Password Input"
+                Write-Host "  3) Both Allowed"
+                Write-Host "Select option [1-3] (Default: 1): " -ForegroundColor Cyan -NoNewline
+            }
+            $modeChoice = Read-Host
+            if ($modeChoice -match "^[1-3]$") {
+                $authMode = $modeChoice
+            }
+            
+            if ($authMode -eq "1" -or $authMode -eq "3") {
+                Write-Host ""
+                if ($DISPLAY_LANGUAGE -eq "ZH") {
+                    Write-Host "请输入自定义参数名称 (默认: UserAgree): " -ForegroundColor Cyan -NoNewline
+                } else {
+                    Write-Host "Enter custom parameter name (Default: UserAgree): " -ForegroundColor Cyan -NoNewline
+                }
+                $customParam = Read-Host
+                if (![string]::IsNullOrWhiteSpace($customParam)) {
+                    $paramName = $customParam.Trim()
+                }
+            }
+        }
+
         $profileDir = Split-Path $PROFILE -Parent
         if (!(Test-Path $profileDir)) {
             New-Item -ItemType Directory -Path $profileDir -Force | Out-Null
@@ -126,6 +174,8 @@ if ($userInput -eq "uninstall") {
 # ==================== Command Interceptor AI Shield ====================
 $InterceptRules = _PLACEHOLDER_RULES_
 $ShieldPassword = "_PLACEHOLDER_PASSWORD_"
+$AuthMode = "_PLACEHOLDER_AUTH_MODE_"
+$ParamName = "_PLACEHOLDER_PARAM_NAME_"
 
 function Invoke-InterceptedCommand {
     param(
@@ -133,43 +183,91 @@ function Invoke-InterceptedCommand {
         [object]$CmdArgs
     )
     
+    # Strip .exe suffix from command name for rule lookup
+    $ruleKey = $CmdName
+    if ($ruleKey.EndsWith(".exe")) {
+        $ruleKey = $ruleKey.Substring(0, $ruleKey.Length - 4)
+    }
+    
     # Check if target command and subcommands match
-    if ($CmdArgs.Count -gt 0 -and $InterceptRules.ContainsKey($CmdName)) {
-        $rule = $InterceptRules[$CmdName]
+    if ($CmdArgs.Count -gt 0 -and $InterceptRules.ContainsKey($ruleKey)) {
+        $rule = $InterceptRules[$ruleKey]
         $subcommands = $rule["subs"]
         if ($subcommands -contains $CmdArgs[0]) {
             $alertMsg = $rule["warn"]
             
-            # EN: Print: [command] [subcommand] need user agree
-            # ZH: 打印: git checkout need user agree
+            # Check parameter authentication if mode requires/allows it
+            $expectedToken = "$ParamName=$ShieldPassword"
+            $authenticatedByParam = $false
+            if ($AuthMode -eq "1" -or $AuthMode -eq "3") {
+                $cleanArgs = $CmdArgs | Where-Object { $_ -ne $expectedToken }
+                $authenticatedByParam = ($cleanArgs.Count -lt $CmdArgs.Count)
+            } else {
+                $cleanArgs = $CmdArgs
+            }
+            
+            if ($authenticatedByParam) {
+                # Exec command with parameter cleaned
+                $realCmd = $CmdName
+                if (-not $realCmd.EndsWith(".exe")) {
+                    $realCmd = "$realCmd.exe"
+                }
+                $cmdPath = (Get-Command -CommandType Application $realCmd).Definition
+                & $cmdPath $cleanArgs
+                return
+            }
+            
+            # Parameter missing or auth mode is password only
+            if ($AuthMode -eq "1") {
+                # Only parameter mode: Deny immediately with clean warning, hiding plain password
+                Write-Host "_PLACEHOLDER_MISSING_" -ForegroundColor Red
+                return
+            }
+            
+            # Mode 2 (Only Password) or Mode 3 (Both Allowed, parameter missing) -> prompt password
             Write-Host "$CmdName $($CmdArgs[0]) $alertMsg" -ForegroundColor Yellow
             $pwd = Read-Host -AsSecureString "_PLACEHOLDER_ASK_"
             if ($pwd -ne $null) {
                 $BSTR = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($pwd)
                 $Plain = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($BSTR)
                 if ($Plain -eq $ShieldPassword) {
-                    Get-Command "$CmdName.exe" | Select-Object -ExpandProperty Definition | & $_ $CmdArgs
+                    $realCmd = $CmdName
+                    if (-not $realCmd.EndsWith(".exe")) {
+                        $realCmd = "$realCmd.exe"
+                    }
+                    $cmdPath = (Get-Command -CommandType Application $realCmd).Definition
+                    & $cmdPath $cleanArgs
                     return
                 }
             }
-            # EN: Print 'deny' on failure
-            # ZH: 验证失败直接打印 'deny'
             Write-Host "_PLACEHOLDER_FAIL_" -ForegroundColor Red
             return
         }
     }
     
-    # Fallback to normal execution
-    Get-Command "$CmdName.exe" | Select-Object -ExpandProperty Definition | & $_ $CmdArgs
+    # Fallback to normal execution (use -CommandType Application to bypass script wrappers)
+    $realCmd = $CmdName
+    if (-not $realCmd.EndsWith(".exe")) {
+        $realCmd = "$realCmd.exe"
+    }
+    $cmdPath = (Get-Command -CommandType Application $realCmd).Definition
+    & $cmdPath $CmdArgs
 }
 
-# Dynamically define wrapper functions for each monitored command
+# Dynamically define wrapper functions for each monitored command and its .exe version
 foreach ($cmd in $InterceptRules.Keys) {
-    Set-Item -Path "Env:\$cmd" -Value ""
-    New-Item -Path "Function:\$cmd" -Value ([ValueType]::CreateInstance) -Force | Out-Null
+    # Define wrapper for basic command (e.g. git)
     Set-Item -Path "Function:\$cmd" -Value (
         [scriptblock]::Create("Invoke-InterceptedCommand -CmdName '$cmd' -CmdArgs `$args")
     ) -Force
+    
+    # Define wrapper for .exe suffix (e.g. git.exe) to prevent bypass
+    if (-not $cmd.EndsWith(".exe")) {
+        $exeCmd = "$cmd.exe"
+        Set-Item -Path "Function:\$exeCmd" -Value (
+            [scriptblock]::Create("Invoke-InterceptedCommand -CmdName '$exeCmd' -CmdArgs `$args")
+        ) -Force
+    }
 }
 # ========================================================================
 '@
@@ -177,6 +275,10 @@ foreach ($cmd in $InterceptRules.Keys) {
         # Replace dynamic parameters inside code template
         $interceptCode = $interceptCode.Replace("_PLACEHOLDER_RULES_", $rulesMapString)
         $interceptCode = $interceptCode.Replace("_PLACEHOLDER_PASSWORD_", $userInput)
+        $interceptCode = $interceptCode.Replace("_PLACEHOLDER_AUTH_MODE_", $authMode)
+        $interceptCode = $interceptCode.Replace("_PLACEHOLDER_PARAM_NAME_", $paramName)
+        $missingParamMsg = $L["MissingParam"].Replace("_PLACEHOLDER_PARAM_NAME_", $paramName)
+        $interceptCode = $interceptCode.Replace("_PLACEHOLDER_MISSING_", $missingParamMsg)
         $interceptCode = $interceptCode.Replace("_PLACEHOLDER_ASK_", $L["AskPwd"])
         $interceptCode = $interceptCode.Replace("_PLACEHOLDER_FAIL_", $L["Fail"])
 

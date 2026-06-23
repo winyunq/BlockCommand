@@ -38,9 +38,23 @@ Since these risks are caused by a few high-risk instructions, **let's lock those
 `BlockCommand` is a lightweight **PowerShell Command Interceptor** designed for Windows.
 By injecting a secure wrapper function into your PowerShell `$PROFILE`, it proxies and monitors specific commands and subcommands.
 
-Whenever an AI agent (or you yourself) runs a risky command (e.g., `git checkout` or `git restore`), the wrapper intercepts the process and **forces you to enter a validation password**:
-* **Correct Password**: The command is handed off to the original executable and executes normally.
-* **Incorrect/No Password**: The command is aborted with a `deny` feedback, successfully preventing the AI from discarding your unsaved changes.
+By default, when an AI agent runs a risky command (e.g., `git checkout` or `git restore`), the wrapper intercepts the process and denies execution immediately unless the authentication parameter is provided:
+
+### 🎭 AI & User Collaboration Flow
+1. **User**: "Discard my local modifications."
+2. **AI**: `git checkout .`
+3. **PowerShell Interceptor**: `need Agree(by UserAgree=[YOUR_PASSWORD])` *(aborted)*
+4. **AI**: "This command requires authorization. Could you please provide the permission password?"
+5. **User**: "The password is XXX."
+6. **AI**: `git checkout . UserAgree=XXX`
+7. **PowerShell Interceptor**: *(Validates, strips the token, runs original `git checkout .`)* -> **Success!**
+
+---
+
+## 🛠️ Advanced Settings & AI Guidelines
+
+For detailed information on configuring authentication modes (Interactive vs Parameterized) or custom parameter names, and providing instructions for AI agents, please refer to:
+👉 **[Advanced Configuration & AI Guidelines](file:///D:/AIWritePaper/HighSpinErrorCompensationPY/BlockCommand/Document/Advanced.md)**
 
 ---
 

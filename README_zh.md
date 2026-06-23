@@ -38,9 +38,23 @@
 `BlockCommand` 是一款针对 Windows PowerShell 的轻量级**命令行拦截器**。
 通过在您的 PowerShell `$PROFILE` 配置文件中注入一个拦截保护函数，它能够代理并监控你指定的关键命令与子命令。
 
-一旦 AI（或您自己）在终端尝试执行如 `git checkout` 或 `git restore` 等风险操作时，系统会**强制要求输入您设置的校验密码**：
-* 验证成功：命令正常透传给原命令执行。
-* 验证失败：命令被直接拦截，控制台输出 `deny`，有效防止 AI 擅自清理未保存的修改。
+默认情况下，一旦 AI 在终端尝试执行如 `git checkout` 或 `git restore` 等风险操作时，系统会直接阻断并要求通过携带参数的形式进行授权：
+
+### 🎭 AI 与用户协同交互流
+1. **用户**：“帮我放弃本地更改。”
+2. **AI**：`git checkout .`
+3. **PowerShell 拦截器**：`缺少用户同意(UserAgree=[您的密码])` *(执行阻断)*
+4. **AI**：“执行此命令需要您的同意。请问授权密码是多少？”
+5. **用户**：“密码是 XXX。”
+6. **AI**：`git checkout . UserAgree=XXX`
+7. **PowerShell 拦截器**：*(验证成功，清洗授权参数，执行真实的 `git checkout .`)* -> **执行成功！**
+
+---
+
+## 🛠️ 高级配置与 AI 交互指南
+
+关于如何配置不同的认证模式（参数校验/交互密钥输入/两者皆可）、自定义参数名、以及为 AI 编写的指令提示指南，请参阅：
+👉 **[高级配置与 AI 交互指南](file:///D:/AIWritePaper/HighSpinErrorCompensationPY/BlockCommand/Document/Advanced.md)**
 
 ---
 
